@@ -1,0 +1,6 @@
+#NetBeans specific
+nbproject/
+Makefile
+
+#other files
+original.sh
