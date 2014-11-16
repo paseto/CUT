@@ -136,7 +136,7 @@ function copyUpload {
     if [ -f $SOURCE ] #Check if file exists
     then                  
         echo -e "Uploading FILE $SOURCE to $DESTINATION... \c"
-        curl -k -i --globoff -o "$CUT_LOG_FILE" --upload-file "$SOURCE" -X POST "${URL_HANDLER}${COPY_DEFAULT_FOLDER}/$DESTINATION?${QUERY_STRING}" -H "X-Api-Version: 2;" -H "Content-Type: text/plain" 2> /dev/null #create file
+        curl -i --globoff -o "$CUT_LOG_FILE" --upload-file "$SOURCE" -X POST "${URL_HANDLER}${COPY_DEFAULT_FOLDER}/$DESTINATION?${QUERY_STRING}" -H "X-Api-Version: 2;" 2> /dev/null #create file
         echo "done"
     else
         echo "File not found at $SOURCE"
