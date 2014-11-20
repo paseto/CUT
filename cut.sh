@@ -27,6 +27,10 @@ URL_META="https://api.copy.com/rest/meta"
 URL_HANDLER="https://api.copy.com/rest/files/"
 #Copy Developer URL
 URL_DEV="https://developers.copy.com/console"
+#Copy login URL
+URL_LOGIN="https://www.copy.com/auth/login"
+#Copy create account URL
+URL_CREATE="https://www.copy.com/signup"
 
 #Get Verifier code from thrird party URL
 CALLBACK_URL="http://egxdev.com/copyVerifier.php"
@@ -77,22 +81,24 @@ else
         #USER AUTH
 
         echo -ne "\n ----- CUT - Copy Upload Tool v$CUT_VERSION - [SETUP] ----- \n"
-        echo -ne " Please open the following URL in your browser and click Create Application or\n"
-        echo -ne " Browse Application and fill the required information above."
+        echo -ne "\n Please follow instructions above:\n"
+        echo -ne " 1 - Login (${URL_LOGIN}) or Create account(${URL_CREATE}) at Copy \n" 
+        echo -ne " 2 - Open the following URL in your browser and click Create Application or\n"
         echo -ne "\n\n ${URL_DEV}\n\n"        
+        echo -ne " 3 - Browse Application and fill the required information above."        
         echo -n " Please enter Consumer Key: "
         read CONSUMER_KEY
         echo -n " Please enter Consumer Secret: "
         read CONSUMER_SECRET
-        echo -n " Default Copy root folder [CUT]: "
+        echo -n " Default Copy folder where your files will be placed [CUT]: "
         read COPY_DEFAULT_FOLDER
         if [[ $COPY_DEFAULT_FOLDER == "" ]]; then 
             COPY_DEFAULT_FOLDER="CUT"
         fi
         
-        echo -ne "\n Now open the following URL in your browser to allow CUT to access your Copy folder \n"
+        echo -ne "\n 4 - Now open the following URL in your browser to allow CUT to access your Copy folder \n"
         echo -ne "\n ${URL_AUTH}?oauth_token=$OAUTH_TOKEN\n"
-        echo -ne "\n Please enter Verification Code: "
+        echo -ne "\n 5 - Please paste Verification Code: "
         read VCODE
         
 
@@ -155,7 +161,7 @@ function usage {
 
 #Argument count
 if [ "$#" -ne 3 ]; then
-    echo "Illegal number of parameters"
+    #echo "Illegal number of parameters"
     usage
     exit 1
 fi
