@@ -4,10 +4,11 @@
 #  
 # Author: Giovani Paseto
 #
-# Sync and upload files to Copy
+# Sync and upload files to Copy using Bash
 
-CUT_VERSION="0.1"
+CUT_VERSION="0.1.1"
 CUT_CONFIG=~/.cut
+CUT_CONSUMER_CONFIG=~/cut_consumer
 CUT_LOG_FILE="logfile"
 
 ###########
@@ -33,17 +34,12 @@ URL_LOGIN="https://www.copy.com/auth/login"
 URL_CREATE="https://www.copy.com/signup"
 
 #Get Verifier code from thrird party URL
-CALLBACK_URL="http://egxdev.com/copyVerifier.php"
+
+CK_URL="http://egxdev.com/copyVerifier.php"
 
 #PARAMS
 TIMESTAMP=`date +%s`
 #NONCE=`date +%s%T555555555 | openssl base64 | sed -e s'/[+=/]//g'`
-
-
-oauth_ck="oauth_consumer_key=$CONSUMER_KEY" #consumer key
-oauth_sm="oauth_signature_method=PLAINTEXT" #signature method
-oauth_sg="oauth_signature=$CONSUMER_SECRET%26" #signature
-oauth_timestamp="oauth_timestamp=$TIMESTAMP"
 
 function nonce (){
   echo `date +%s%T555555555 | openssl base64 | sed -e s'/[+=/]//g'`
@@ -60,42 +56,64 @@ if [[ -e $CUT_CONFIG ]]; then
         unlink $CUT_CONFIG
         exit 1
     fi
-else
-
-    
-    QUERY_STRING="oauth_callback=$CALLBACK_URL&$oauth_ck&$oauth_sm&$oauth_sg&${oauth_timestamp}&oauth_nonce=$RANDOM"    
-    echo -ne "\n Requesting token... "
-    curl -k -s --show-error --globoff -i -o "$CUT_LOG_FILE" --data "$QUERY_STRING" "$URL_RT" 2> /dev/null    
-    OAUTH_TOKEN_SECRET=$(sed -n 's/.*oauth_token_secret=\([a-z A-Z 0-9]*\).*/\1/p' "$CUT_LOG_FILE")
-    OAUTH_TOKEN=$(sed -n 's/.*oauth_token=\([a-z A-Z 0-9]*\).*/\1/p' "$CUT_LOG_FILE")
-
-    if [[ $OAUTH_TOKEN != "" && $OAUTH_TOKEN_SECRET != "" ]]; then
-        echo -ne "OK\n"
-    else
-        echo -ne " FAILED\n\n Please, check your App key and secret...\n\n"
-        exit 1
-    fi
-    QUERY_STRING="$oauth_ck&oauth_token=$OAUTH_TOKEN&$oauth_sm&${oauth_timestamp}&oauth_nonce=$RANDOM&$oauth_sg$OAUTH_TOKEN_SECRET&"
-
+else    
     while (true); do
         #USER AUTH
-
         echo -ne "\n ----- CUT - Copy Upload Tool v$CUT_VERSION - [SETUP] ----- \n"
         echo -ne "\n Please follow instructions above:\n"
         echo -ne " 1 - Login (${URL_LOGIN}) or Create account(${URL_CREATE}) at Copy \n" 
         echo -ne " 2 - Open the following URL in your browser and click Create Application or\n"
         echo -ne "\n\n ${URL_DEV}\n\n"        
         echo -ne " 3 - Browse Application and fill the required information above."        
-        echo -n " Please enter Consumer Key: "
+	
+	#Check if is the same key
+	if [[ -e $CUT_CONSUMER_CONFIG ]]; then
+	    source "$CUT_CONSUMER_CONFIG" 2>/dev/null || {
+        	sed -i'' 's/:/=/' "$CUT_CONSUMER_CONFIG" && source "$CUT_CONSUMER_CONFIG" 2>/dev/null
+	    }
+	fi
+
+        echo -n " Please enter Consumer Key: (${TEMP_KEY})"
         read CONSUMER_KEY
-        echo -n " Please enter Consumer Secret: "
+	if [[ $CONSUMER_KEY == "" ]]; then 
+            CONSUMER_KEY=${TEMP_KEY}
+        fi
+        echo -n " Please enter Consumer Secret (${TEMP_SECRET}): "
         read CONSUMER_SECRET
+	if [[ $CONSUMER_SECRET == "" ]]; then 
+            CONSUMER_SECRET=${TEMP_SECRET}
+        fi
         echo -n " Default Copy folder where your files will be placed [CUT]: "
         read COPY_DEFAULT_FOLDER
         if [[ $COPY_DEFAULT_FOLDER == "" ]]; then 
             COPY_DEFAULT_FOLDER="CUT"
         fi
+
+	#Save keys
+	echo "TEMP_KEY=$CONSUMER_KEY" > "$CUT_CONSUMER_CONFIG"
+        echo "TEMP_SECRET=$CONSUMER_SECRET" >> "$CUT_CONSUMER_CONFIG" 
         
+	echo -ne "\n Requesting token--- "
+	oauth_ck="oauth_consumer_key=$CONSUMER_KEY" #consumer key
+	oauth_sm="oauth_signature_method=PLAINTEXT" #signature method
+	oauth_sg="oauth_signature=$CONSUMER_SECRET%26" #signature
+	oauth_timestamp="oauth_timestamp=$TIMESTAMP"
+	QUERY_STRING="oauth_callback=$CK_URL&$oauth_ck&$oauth_sm&$oauth_sg&$oauth_timestamp&oauth_nonce=$RANDOM"     	
+
+	curl -k -s --show-error --globoff -i -o "$CUT_LOG_FILE" --data "$QUERY_STRING" "$URL_RT" 2> /dev/null    
+	OAUTH_TOKEN_SECRET=$(sed -n 's/.*oauth_token_secret=\([a-z A-Z 0-9]*\).*/\1/p' "$CUT_LOG_FILE")
+	OAUTH_TOKEN=$(sed -n 's/.*oauth_token=\([a-z A-Z 0-9]*\).*/\1/p' "$CUT_LOG_FILE")
+	
+	echo -ne "\n TOKEN = ${OAUTH_TOKEN} SECRET ${OAUTH_TOKEN_SECRET}"
+
+	if [[ $OAUTH_TOKEN == "" ]]; then	
+	        echo -ne " FAILED\n\n Please, run cut again...\n\n"
+		E_MSG=$(sed -n 's/.*oauth_error_message=\([^\n\r]*\).*/\1/p' "$CUT_LOG_FILE")
+		echo -ne "\n Error message: $E_MSG \n"
+		unlink $CUT_LOG_FILE
+		exit 1
+	fi
+
         echo -ne "\n 4 - Now open the following URL in your browser to allow CUT to access your Copy folder \n"
         echo -ne "\n ${URL_AUTH}?oauth_token=$OAUTH_TOKEN\n"
         echo -ne "\n 5 - Please paste Verification Code: "
@@ -103,12 +121,18 @@ else
         
 
         #API_ACCESS_TOKEN_URL
-        echo -ne "\n Requesting token... "
-        curl -k -s --show-error --globoff -i -o "$CUT_LOG_FILE" --data "${QUERY_STRING}&oauth_verifier=$VCODE" "$URL_ACCESS" 2> /dev/null        
+        echo -ne "\n Requesting token... vcode: $VCODE"
+	unlink $CUT_LOG_FILE
+
+	#Token secret needed
+	oauth_sg="oauth_signature=$CONSUMER_SECRET%26$OAUTH_TOKEN_SECRET" #signature
+
+	QUERY_STRING="$oauth_ck&oauth_token=$OAUTH_TOKEN&$oauth_sm&$oauth_sg&$oauth_timestamp&oauth_nonce=$RANDOM&oauth_version=1.0&oauth_verifier=$VCODE"    
+        curl -k -s --show-error --globoff -i -o "$CUT_LOG_FILE" --data "$QUERY_STRING" "$URL_ACCESS" 2> /dev/null        
         OAUTH_ACCESS_TOKEN_SECRET=$(sed -n 's/.*oauth_token_secret=\([a-z A-Z 0-9]*\).*/\1/p' "$CUT_LOG_FILE")
         OAUTH_ACCESS_TOKEN=$(sed -n 's/.*oauth_token=\([a-z A-Z 0-9]*\)&.*/\1/p' "$CUT_LOG_FILE")   
 
-
+	#Save data to file
         if [[ $OAUTH_ACCESS_TOKEN != "" && $OAUTH_ACCESS_TOKEN_SECRET != "" ]]; then
             echo -ne "OK\n"            
             echo "CONSUMER_KEY=$CONSUMER_KEY" > "$CUT_CONFIG"
@@ -126,6 +150,19 @@ else
 
     done;
 fi
+
+
+#init upload
+
+if [[ -e $CUT_CONFIG ]]; then
+    source "$CUT_CONFIG" 2>/dev/null || {
+       	sed -i'' 's/:/=/' "$CUT_CONSUMER_CONFIG" && source "$CUT_CONSUMER_CONFIG" 2>/dev/null
+    }
+fi
+oauth_ck="oauth_consumer_key=$CONSUMER_KEY" #consumer key
+oauth_sm="oauth_signature_method=PLAINTEXT" #signature method
+oauth_sg="oauth_signature=$CONSUMER_SECRET%26" #signature
+oauth_timestamp="oauth_timestamp=$TIMESTAMP"
 
 QUERY_STRING="$oauth_ck&oauth_token=$OAUTH_ACCESS_TOKEN&$oauth_sm&${oauth_timestamp}&oauth_nonce=$RANDOM&$oauth_sg$OAUTH_ACCESS_TOKEN_SECRET"
 
@@ -186,3 +223,4 @@ while getopts ":s:r:" opt; do
             ;;
     esac
 done
+
